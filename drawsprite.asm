@@ -27,17 +27,14 @@ DrawSprite:
 		rl d
 		rl e 
 		rl d							 ; sprnum << 3 (Carry was 0)
-;		push de							 ; now will not touch DE, no need to preserve
 	
 		or e                             ; DE = (sprnum << 3) | rotation
-		ld l,a
-		
+		ld l,a	
 		ld a, d
 		add a, high SprCacheTable
 		ld h, a                          ; HL = SprCacheTable[(sprnum << 3) | rotation]
 		ld a, (hl)
 
-;		pop de
 		push bc
 		ld h, LRU_prev / 256			 ; pointer to the LRU_prev list
 		cp 255
