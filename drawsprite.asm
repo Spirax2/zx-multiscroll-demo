@@ -26,20 +26,20 @@ DrawSprite:
 		rl e
 		rl d
 		rl e 
-		rl d					; sprnum << 3 (Carry was 0)
-		push de
+		rl d							 ; sprnum << 3 (Carry was 0)
+;		push de							 ; now will not touch DE, no need to preserve
+	
+		or e                             ; DE = (sprnum << 3) | rotation
+		ld l,a
 		
-		or e
-		ld e, a					; HL = (sprnum << 3) | rotation
-
-
-		ld hl, SprCacheTable
-		add hl, de				; HL = SprCacheTable[(sprnum << 3) | rotation]
+		ld a, d
+		add a, high SprCacheTable
+		ld h, a                          ; HL = SprCacheTable[(sprnum << 3) | rotation]
 		ld a, (hl)
 
-		pop de
+;		pop de
 		push bc
-		ld h, LRU_prev / 256				; pointer to the LRU_prev list
+		ld h, LRU_prev / 256			 ; pointer to the LRU_prev list
 		cp 255
 		call nz,MoveSpriteToTop                 ; Sprite found in cache, since the value is not 255
 							; move to the top of the list and draw
@@ -52,91 +52,91 @@ DrawSprite:
         ; First, calculate the target position: SprCacheData+96*LRU_first
 
         ld a, (LRU_first)
-		add a,a
-        ld hl, Multiply_by_96
-        ld c,a
-        ld b,0
-        add hl, bc		; HL points to the value in the array
-        ld c, (hl)
-        inc hl
-        ld b, (hl)		; BC = 96 * LRU_last
-        ld hl, SprCacheData
-        add hl, bc		; hl = SprCacheData + 96 * LRU_last  <- the place in the sprite cache to get the rotated sprite from. 
-
+		add a, a
+        ld hl, Multiply_by_96+1	;Note Multiply_by_96 is aligned to be on the same high Byte so we only operate with L and also we can do inc L instead inc HL
+		add a, l
+		ld l, a			; HL points to the value in the array + 1, to the high byte
+		ld a, (hl)		
+		add a, high SprCacheData	
+		dec l
+		ld l, (hl)
+		ld h, a		; HL = Sprite address , = SprCacheData + 96 * LRU_last  <- the place in the sprite cache to get the rotated sprite from. 
+	
         pop bc                  ; get X and Y back!
         ; now calculate screen addresses and stuff, then paint
+
         ld a, c			; 4
 		and $07			; 7  <-the 3 lowest bits are the line within a char
 		ld d,a			; 4
 		ld a,c			; 4  <- the top 2 bits are the screen third
-		rra			; 4
-		rra			; 4
-		rra			; 4
+		rra			    ; 4
+		rra			    ; 4
+		rra			    ; 4
 		and $18			; 7
 		or d			; 4
 		or $C0			; 7	<- If the start address is 16384, this should be $40
-		ld d,a			; 4 (total 53 t-states) H has the high byte of the address 
+		ld d,a			; 4 (total 53 t-states) D has the high byte of the address 
 		
 		ld a,b			;4
-		rra			;4
-		rra			;4
-		rra			;4
+		rra			    ;4
+		rra			    ;4
+		rra			    ;4
 		and $1f			;7  <- the top 5 bits are the char pos. The low 3 bits are the pixel pos
 		ld e,a			;4
 		ld a,c			;4
-		rla			;4
-		rla			;4
+		rla			    ;4
+		rla		     	;4
 		and $e0			;7
 		or e			;4
-		ld e,a			;4 (total 54 t-states) L has the low byte of the address
+		ld e,a			;4 (total 54 t-states) E has the low byte of the address
 		
-		ld bc, $1020		;B= 16 for the loop C=32 to add a line
+		ld bc, $1020		; B= 16 para el bucle C=32 para sumar linea
 		;HL = Sprite address , DE = Screen address
 lineloop:
         ; NOTE: the byte order in the cached sprite entry is a bit different
         ; We have one byte of mask, then one byte of gfx. This was swapped when
         ; storing in the cache, so keep this in mind if you want to reuse this
         ; routine without the cache
-		ld a, (de)
-		and (hl)
+		ld a, (de)			;get what on Screen
+		and (hl)			;AND with the Sprite Mask
+		inc hl				
+		or (hl)				;OR with the Sprite
 		inc hl
-		or (hl)
-		inc hl
-		ld (de), a 
-		inc e
+		ld (de), a 			;store on Screen
+		inc e				;next char on Screen
 
-		ld a, (de)
-		and (hl)
+		ld a, (de)			;get what on Screen
+		and (hl)			;AND with the Sprite Mask
+		inc hl				
+		or (hl)				;OR with the Sprite
 		inc hl
-		or (hl)
-		inc hl
-		ld (de), a 
-		inc e
+		ld (de), a 			;store on Screen
+		inc e				;next char on Screen
 
-		ld a, (de)
-		and (hl)
+		ld a, (de)			;get what on Screen
+		and (hl)			;AND with the Sprite Mask
+		inc hl				
+		or (hl)				;OR with the Sprite
 		inc hl
-		or (hl)
-		inc hl
-		ld (de), a 
+		ld (de), a 			;store on Screen
 
 		dec e
-		dec e
-		inc d			; next line
+		dec e				; return to original Column
+		inc d				; next line
 
 		ld a, d
 		and 7
-		jr z, draw_a2		; if the low 3 bits of B are zero
+		jr z, draw_a2		; if the low 3 bits of B are zero, we are changing to a new char line
 		djnz lineloop
 		ret
 
 draw_a2:
 		ld a, e
-		add a, c
+		add a, c			; we add +32 for the next line
 		ld e, a
-		jr c, draw_a1		; and C + 32 overflows
+		jr c, draw_a1		; and C + 32 overflows 
 		ld a, d
-		sub 8			; then we go to the next third of the screen
+		sub 8			    ; then we go to the next third of the screen
 		ld d, a
 draw_a1:
 		djnz lineloop
@@ -155,36 +155,36 @@ InsertSpriteInCache:
 			push hl
 			ld a, (LRU_last)
 			add a, a		; MappingTable + 2*LRU_last
-			ld hl, MappingTable
+			ld hl, MappingTable+1	;we add 1 to point to the high byte of MappingTable
 			add a,l
-			inc a
+;			inc a			
 			ld l, a			; HL points to the high byte of the current entry
 			ld a, (hl)
 			and a			; If a==0, this entry was unused
 			jr z, insert_unused_entry
-						; The entry is used, so we need to clean up
+							; The entry is used, so we need to clean up
 			ld b, a
-			dec hl
-			ld a, (hl)
-			ld c, a			; BC points to the sprnum | rotation entry. It should be LRU_last now, we will reset to 255
+			dec l			; mapping table is aligned on high byte 
+			ld c, (hl)		; BC points to the sprnum | rotation entry. It should be LRU_last now, we will reset to 255
 			ld a, 255
 			ld (bc), a
+
 insert_unused_entry:
-			ld b, d
+
 			ld a, e
 			or ixl
-			ld c, a			; BC = sprnum <<3 | rotation
-			ld hl, SprCacheTable
-			add hl, bc		; HL has now the address
-			ld c, l
-			ld b, h			; BC has it
+			ld c, a			; DC = sprnum <<3 | rotation
+			ld a, d
+			add a, high SprCacheTable
+			ld b, a			; BC has now the address
+
 			ld a, (LRU_last)
 			add a, a		; MappingTable + 2*LRU_last
 			ld hl, MappingTable
 			add a,l
 			ld l, a
 			ld (hl), c
-			inc hl
+			inc l			; mapping table is aligned
 			ld (hl), b		; store the address back
 			pop hl
 
@@ -214,50 +214,41 @@ insert_unused_entry:
 			ld l, LRU_LASTENTRY
 			ld (hl), c		; LRU_next[LRU_LASTENTRY] = LRU_last;
 
-			ld hl, SprCacheTable
-			ld ixh,c			; ixh == LRU_last
-			
 			ex af, af'		; use alternate A
 			ld a, ixl		; A' = rotation
-
-			ld b, d					; BC= sprnum << 3
 			or e
-			ld c, a					; HL = (sprnum << 3) | rotation
+			ld l, a			; DL = sprnum <<3 | rotation
+			ld a, d
+			add a, high SprCacheTable
+			ld h, a			; HL has now the address SprCacheTable[value]
+			ex af, af'		; normal A again
+			ld (hl), c		; SprCacheTable[value]=LRU_last
 
-			add hl, bc				; hl = SprCacheTable[value]
-
-			ex af, af'				; normal A again
-
-			ld c, ixh
-			ld (hl), c				; SprCacheTable[value]=LRU_last
-
-			ld b, a					; save LRU_newlast			
-
+			ld b, a			; save LRU_newlast			
 			ld a, (LRU_last)
-			ld (LRU_first), a			; LRU_first = LRU_last;
-			ld a,b		
-			ld (LRU_last),a				;  LRU_last = LRU_newlast, A is still LRU_newlast
-
+			ld (LRU_first), a		; LRU_first = LRU_last;
+			ld a, b		
+			ld (LRU_last),a			;  LRU_last = LRU_newlast, A is still LRU_newlast
 
 			; Now we should rotate the sprite and really write it there
 			; First, calculate the target position: SprCacheData+96*SprCacheTable[value]
 			; C is LRU_last == SprCacheTable[value]
 			
-			ld hl, Multiply_by_96
-			ld b,0 
-			sla c			; to index, we need LRU_LAST * 2
-			add hl, bc		; HL points to the value in the array
-			ld c, (hl)
-			inc hl
-			
+			ld hl, Multiply_by_96+1	;Note Multiply_by_96 is aligned to be on the same high Byte so we only operate with L and also we can do inc L instead inc HL
+			ld a, c	
+			add a, a		;LRU_LAST * 2
+			add a, l		;
+			ld l, a			;HL points to the high byte value in the array 
+
 			ld a, (hl)		; AC = 96 * LRU_last
-			add a, SprCacheData / 256
-			ld h,a
-			ld l,c			; HL = SprCacheData + 96 * LRU_last  <- the place in the sprite cache to store the rotated sprite
+			add a, high SprCacheData
+			dec l
+			ld l, (hl)
+			ld h, a			; HL = SprCacheData + 96 * LRU_last  <- the place in the sprite cache to store the rotated sprite
 
-
+			
 			; The target position is HL, now rotate!
-			ld (SCRADD_rotate),HL		; save the target address in SCRADD		
+			ld (SCRADD_rotate),HL		; save the target address for cache in SCRADD		
 
 			ld hl, $C000    ; $C000 is the address of the first sprite
 			and a			; clear carry flag
@@ -268,25 +259,26 @@ insert_unused_entry:
 			rl e
 			rl d			; DE = sprnum *64
 			add hl, de		; HL = first position for the sprite
-			ld (insert_lineloop+1),hl
-	
             ; Move to the sprite RAM bank
             ld b, 1
             call setrambank_with_di
 
 			ld a, 16		; 16-line sprite
 			ld (LINECOUNT), a
-
-insert_lineloop:	ld hl, 0		; this address will be modified
-			ld e, (hl)
-			inc hl
-			ld d, (hl)
-			inc hl
-			ld c, (hl)
-			inc hl
-			ld b, (hl)
-			inc hl
-			ld (insert_lineloop+1),hl
+			jp insert_lineloop+3		; as we already have HL we jump
+			;	note: sprites are 64 bytes each, so as they are aligned on source memory we can use inc L instead of inc HL
+			;	take care if change the sprites size ....
+insert_lineloop:
+			ld hl, 0		; this source address will be modified later
+			ld e, (hl)		;mask 1
+			inc l			
+			ld d, (hl)		;mask 2
+			inc l
+			ld c, (hl)		;sprite 1
+			inc l
+			ld b, (hl)		;sprite 2
+			inc l
+			ld (insert_lineloop+1), hl		;update source address for the next loop
 
 			ld a, $ff		; a will be shifted to the mask. 1 means transparent
 			scf			; transparent
@@ -295,11 +287,12 @@ insert_lineloop:	ld hl, 0		; this address will be modified
 			ld a, ixl
 			or a
 			jr z, insert_skiprotate	; if no rotation is needed, skip this
-		
+
 			ld l,a			; l= loop counter
 			xor a			; clear carry flag, clear a',since if will be shifted to the image
 
-insert_rotateloop:	ex af, af'		; a ==mask
+insert_rotateloop:	
+			ex af, af'		; a ==mask
 			rr e
 			rr d
 			rra
@@ -311,8 +304,8 @@ insert_rotateloop:	ex af, af'		; a ==mask
 			jp nz, 	insert_rotateloop		; at the end, we have DEa with the rotated mask, BCa' with the rotated sprite
 
 SCRADD_rotate: EQU $+1
-insert_skiprotate:	ld hl, 0	; get screen address in BC
-			ld (hl), e		; mask byte1
+insert_skiprotate:	ld hl, 0	; get store cache address in HL
+			ld (hl), e		; mask byte 1
 			inc hl
 			ld (hl), c		; byte sprite 1
 			inc hl
@@ -321,13 +314,13 @@ insert_skiprotate:	ld hl, 0	; get screen address in BC
 			ld (hl), b		; byte sprite 2
 			inc hl
 			ex af, af'
-			ld (hl), a		; write A '(last byte of mask) in cache
+			ld (hl), a		; write A' (last byte of mask) in cache
 			inc hl
 			ex af, af'
 			ld (hl), a		; write A (last byte of sprite) in cache
 			inc hl
 
-			ld (SCRADD_rotate),hl		; store the write address again
+			ld (SCRADD_rotate),hl		; store the cache write address again
 			ld hl, LINECOUNT	
 			dec (hl)
 			jp nz, insert_lineloop		; go to next line
@@ -442,7 +435,3 @@ LRU_first	db 0
 LRU_last	db 41			; pointers to the first and last entry in the cache
 LINECOUNT       db 0
 LRU_LASTENTRY   EQU 42
-Multiply_by_96  dw 0,96,192,288,384,480,576,672,768,864,960,1056,1152
-                dw 1248,1344,1440,1536,1632,1728,1824,1920,2016
-                dw 2112,2208,2304,2400,2496,2592,2688,2784,2880
-                dw 2976,3072,3168,3264,3360,3456,3552,3648,3744,3840,3936
