@@ -141,7 +141,9 @@ randData: dw 42
 
 INCLUDE "engine.asm"
 INCLUDE "drawsprite.asm"
+END_P2:
 
+org $9800		;Aligned on Memory to have same high byte per line
 line1:
     ds 64
 line2:
@@ -158,7 +160,12 @@ line7:
     ds 64
 line8:
     ds 64
-END_P2:
+
+org $9A2C	;Used by Draw_Sprite, moved here to have it aliged on High Byte
+Multiply_by_96  dw 0,96,192,288,384,480,576,672,768,864,960,1056,1152
+                dw 1248,1344,1440,1536,1632,1728,1824,1920,2016
+                dw 2112,2208,2304,2400,2496,2592,2688,2784,2880
+                dw 2976,3072,3168,3264,3360,3456,3552,3648,3744,3840,3936
 
 org $99c0
 tiletable:
